@@ -1,0 +1,65 @@
+
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>FlatHisab Login Test</title>
+</head>
+<body>
+
+    <h2>FlatHisab Authentication Test</h2>
+
+    <input id="username" placeholder="Username">
+    <br><br>
+
+    <input id="password" type="password" placeholder="Password">
+    <br><br>
+
+    <button onclick="login()">Login</button>
+    <button onclick="checkAuth()">Check Session</button>
+    <button onclick="logout()">Logout</button>
+
+    <pre id="result"></pre>
+
+    <script>
+        const API = "/flathisab/backend/auth/";
+
+        async function login() {
+            const response = await fetch(API + "login.php", {
+                method: "POST",
+                credentials: "include",
+                headers: {
+                    "Content-Type": "application/json"
+                },
+                body: JSON.stringify({
+                    username: document.getElementById("username").value,
+                    password: document.getElementById("password").value
+                })
+            });
+
+            document.getElementById("result").textContent =
+                JSON.stringify(await response.json(), null, 2);
+        }
+
+        async function checkAuth() {
+            const response = await fetch(API + "check-auth.php", {
+                credentials: "include"
+            });
+
+            document.getElementById("result").textContent =
+                JSON.stringify(await response.json(), null, 2);
+        }
+
+        async function logout() {
+            const response = await fetch(API + "logout.php", {
+                method: "POST",
+                credentials: "include"
+            });
+
+            document.getElementById("result").textContent =
+                JSON.stringify(await response.json(), null, 2);
+        }
+    </script>
+
+</body>
+</html>
