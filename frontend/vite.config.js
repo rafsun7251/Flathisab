@@ -8,6 +8,14 @@ export default defineConfig({
     react(),
     tailwindcss()
   ],
+
+  base: '/Flathisab/',
+
+  build: {
+    outDir: '../docs',
+    emptyOutDir: true
+  },
+
   server: {
     proxy: {
       '/flathisab': {
