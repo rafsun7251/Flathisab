@@ -2,6 +2,7 @@
 import { useEffect, useState } from "react";
 import MealManagement from "./pages/MealManagement.jsx"
 import AdminMealReview from "./pages/AdminMealReview";
+import ExpenseManagement from "./components/ExpenseManagement";
 const API = "/flathisab/backend/auth/";
 
 function App() {
@@ -450,26 +451,32 @@ function App() {
 
               </div>
             </>
-         ) : page === "Meal Management" || page === "My Meals" ? (
-          <MealManagement user={user} />
-         ): page === "Meal Review" ? (
-          user?.role === "ADMIN" ?(
+         ): page === "Meal Management" || page === "My Meals" ? (
+        <MealManagement user={user} />
+
+        ) : page === "Meal Review" ? (
+         user?.role === "ADMIN" ? (
             <AdminMealReview />
         ) : (
-          <div className="p-6 text-red-600">
+         <div className="p-6 text-red-600">
             Access denied. Admin only.
-            </div>
+         </div>
         )
-      ):(
-          <div className="bg-white rounded-2xl border border-slate-100 shadow-sm p-8 min-h-64">
-           <h3 className="text-xl font-bold text-slate-800">
+
+          ) : page === "Bazar & Expenses" ? (
+           <ExpenseManagement user={user} />
+
+          ) : (
+    <div className="bg-white rounded-2xl border border-slate-100 shadow-sm p-8 min-h-64">
+        <h3 className="text-xl font-bold text-slate-800">
             {page}
-          </h3>
-          <p className="text-slate-500 mt-3">
-         This module is scheduled for development.
-         </p>
-          </div>
-            )}
+        </h3>
+        <p className="text-slate-500 mt-3">
+            This module is scheduled for development.
+        </p>
+    </div>
+)}
+
 
           <footer className="text-center text-xs text-slate-400 mt-10">
             © 2026 FlatHisab. Manage your flat smarter.
