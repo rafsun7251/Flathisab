@@ -65,38 +65,48 @@ try {
 
         $startDate = $month . "-01";
         $endDate = date(
-            "Y-m-d",
-            strtotime($startDate . " +1 month")
+            "Y-m-d",strtotime($startDate . " +1 month")
         );
 
-        $stmt = $db->prepare("
-            SELECT
-                d.deposit_id,
-                d.member_id,
-                m.full_name AS member_name,
-                d.received_by,
-                receiver.full_name AS received_by_name,
-                d.deposit_date,
-                d.amount,
-                d.deposit_type,
-                d.payment_method,
-                d.reference_note,
-                d.status,
-                d.created_at
-            FROM deposits d
-            INNER JOIN users m
-                ON m.user_id = d.member_id
-            LEFT JOIN users receiver
-                ON receiver.user_id = d.received_by
-            WHERE d.deposit_date >= :start_date
-              AND d.deposit_date < :end_date
-            ORDER BY d.deposit_date DESC, d.deposit_id DESC
-        ");
+        $sql = "
+    SELECT
+        d.deposit_id,
+        d.member_id,
+        m.full_name AS member_name,
+        d.received_by,
+        receiver.full_name AS received_by_name,
+        d.deposit_date,
+        d.amount,
+        d.deposit_type,
+        d.payment_method,
+        d.reference_note,
+        d.status,
+        d.created_at
+    FROM deposits d
+    INNER JOIN users m
+        ON m.user_id = d.member_id
+    LEFT JOIN users receiver
+        ON receiver.user_id = d.received_by
+    WHERE d.deposit_date >= :start_date
+      AND d.deposit_date < :end_date
+            ";
 
-        $stmt->execute([
+            $params = [
             ":start_date" => $startDate,
             ":end_date" => $endDate
-        ]);
+            ];
+
+            if (!$isAdmin) {
+             $sql .= " AND d.member_id = :user_id";
+             $params[":user_id"] = $userId;
+                }
+
+            $sql .= "
+            ORDER BY d.deposit_date DESC, d.deposit_id DESC
+                    ";
+
+            $stmt = $db->prepare($sql);
+            $stmt->execute($params);
 
         depositResponse(
             "success",
@@ -147,9 +157,13 @@ try {
             depositResponse("error", "Enter a valid deposit amount.", 400);
         }
 
-        if (!in_array($depositType, ["MEAL_FUND", "GENERAL_FUND"], true)) {
-            depositResponse("error", "Invalid deposit type.", 400);
-        }
+        if ($depositType !== "GENERAL_FUND") {
+    depositResponse(
+        "error",
+        "All new deposits must be submitted to General Fund.",
+        400
+    );
+}
 
         $allowedMethods = [
             "CASH",

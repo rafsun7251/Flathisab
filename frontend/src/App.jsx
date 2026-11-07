@@ -5,6 +5,7 @@ import AdminMealReview from "./pages/AdminMealReview";
 import ExpenseManagement from "./components/ExpenseManagement";
 import UtilitiesManagement from "./components/UtilitiesManagement";
 import DepositManagement from "./components/DepositManagement";
+import SettlementManagement from "./components/SettlementManagement";
 const API = "/flathisab/backend/auth/";
 
 function App() {
@@ -472,7 +473,9 @@ function App() {
             <UtilitiesManagement user={user} />
           ) : page === "Deposits" ? (
           <DepositManagement user={user} />
-          ) : (
+          ) : page === "Monthly Settlement" ? (
+            <SettlementManagement user={user} />
+          ):(
     <div className="bg-white rounded-2xl border border-slate-100 shadow-sm p-8 min-h-64">
         <h3 className="text-xl font-bold text-slate-800">
             {page}

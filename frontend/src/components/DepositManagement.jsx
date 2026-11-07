@@ -1,6 +1,6 @@
 
 import { useEffect, useState } from "react";
-
+import DepositAllocation from "./DepositAllocation";
 const API = "/flathisab/backend/api/";
 
 function currentMonth() {
@@ -427,6 +427,7 @@ export default function DepositManagement({ user }) {
             onChange={e => setMonth(e.target.value)}
             className="border border-slate-300 rounded-xl px-3 py-2"
           />
+ 
         </div>
 
         <div className="overflow-x-auto">
@@ -548,6 +549,9 @@ export default function DepositManagement({ user }) {
 
         </div>
       </div>
+               {isAdmin && (
+  <DepositAllocation />
+)}
 
     </div>
   );
