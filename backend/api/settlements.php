@@ -76,7 +76,9 @@ try {
 
         $stmt = $db->prepare($sql);
 
-        $params = [":month_id" => $monthId];
+        $params = [
+            ":month_id" => $monthId
+        ];
 
         if (!$isAdmin) {
             $params[":user_id"] = $userId;
@@ -88,7 +90,7 @@ try {
             "success",
             "Settlement records retrieved successfully.",
             200,
-            $stmt->fetchAll()
+            $stmt->fetchAll(PDO::FETCH_ASSOC)
         );
     }
 
@@ -126,7 +128,7 @@ try {
             ":month_id" => $monthId
         ]);
 
-        $month = $monthStmt->fetch();
+        $month = $monthStmt->fetch(PDO::FETCH_ASSOC);
 
         if (!$month) {
             settlementResponse("error", "Month not found.", 404);
@@ -143,19 +145,26 @@ try {
         $startDate = $month["start_date"];
         $endDate = $month["end_date"];
 
+        // =====================================
         // Find active members
+        // =====================================
+
         $members = $db->query("
             SELECT user_id, full_name
             FROM users
             WHERE role = 'MEMBER'
               AND account_status = 'ACTIVE'
             ORDER BY user_id
-        ")->fetchAll();
+        ")->fetchAll(PDO::FETCH_ASSOC);
 
         $memberCount = count($members);
 
         if ($memberCount === 0) {
-            settlementResponse("error", "No active members found.", 400);
+            settlementResponse(
+                "error",
+                "No active members found.",
+                400
+            );
         }
 
         // =====================================
@@ -184,8 +193,7 @@ try {
         // =====================================
 
         $mealStmt = $db->prepare("
-            SELECT
-                COALESCE(SUM(quantity + guest_quantity), 0)
+            SELECT COALESCE(SUM(quantity + guest_quantity), 0)
             FROM meal_entries
             WHERE meal_date BETWEEN :start_date AND :end_date
               AND status = 'VERIFIED'
@@ -206,7 +214,7 @@ try {
             );
         }
 
-        // Excel calculation
+        // Meal Rate
         $mealRate = $totalMealQuantity > 0
             ? $foodExpenseTotal / $totalMealQuantity
             : 0;
@@ -232,12 +240,14 @@ try {
 
         $fixedExpenseTotal = (float) $fixedStmt->fetchColumn();
 
+        // Divide fixed expenses equally among active members
         $fixedExpenseShare = $fixedExpenseTotal / $memberCount;
 
         // =====================================
-        // 4. Prepare member-wise queries
+        // 4. Member-wise queries
         // =====================================
 
+        // Member meal quantity
         $memberMealStmt = $db->prepare("
             SELECT COALESCE(SUM(quantity + guest_quantity), 0)
             FROM meal_entries
@@ -246,37 +256,42 @@ try {
               AND status = 'VERIFIED'
         ");
 
+        // Meal and Utility Deposit Allocation
         $depositStmt = $db->prepare("
-    SELECT
-        COALESCE(SUM(
-            CASE
-                WHEN da.allocation_type = 'MEAL_FUND'
-                    THEN da.amount
-                WHEN d.deposit_type = 'MEAL_FUND'
-                     AND da.allocation_id IS NULL
-                    THEN d.amount
-                ELSE 0
-            END
-        ), 0) AS meal_deposit,
+            SELECT
 
-        COALESCE(SUM(
-            CASE
-                WHEN da.allocation_type = 'UTILITY_FUND'
-                    THEN da.amount
-                ELSE 0
-            END
-        ), 0) AS utility_deposit
+                COALESCE(SUM(
+                    CASE
+                        WHEN da.allocation_type = 'MEAL_FUND'
+                            THEN da.amount
 
-    FROM deposits d
+                        WHEN d.deposit_type = 'MEAL_FUND'
+                             AND da.allocation_id IS NULL
+                            THEN d.amount
 
-    LEFT JOIN deposit_allocations da
-        ON da.deposit_id = d.deposit_id
+                        ELSE 0
+                    END
+                ), 0) AS meal_deposit,
 
-    WHERE d.member_id = :member_id
-      AND d.deposit_date BETWEEN :start_date AND :end_date
-      AND d.status = 'VERIFIED'
-");
+                COALESCE(SUM(
+                    CASE
+                        WHEN da.allocation_type = 'UTILITY_FUND'
+                            THEN da.amount
+                        ELSE 0
+                    END
+                ), 0) AS utility_deposit
 
+            FROM deposits d
+
+            LEFT JOIN deposit_allocations da
+                ON da.deposit_id = d.deposit_id
+
+            WHERE d.member_id = :member_id
+              AND d.deposit_date BETWEEN :start_date AND :end_date
+              AND d.status = 'VERIFIED'
+        ");
+
+        // Verified expenses paid personally by member
         $creditStmt = $db->prepare("
             SELECT COALESCE(SUM(amount), 0)
             FROM expenses
@@ -286,8 +301,7 @@ try {
               AND status = 'VERIFIED'
         ");
 
-        
-
+        // Find existing settlement
         $findSettlementStmt = $db->prepare("
             SELECT settlement_id
             FROM monthly_settlements
@@ -295,6 +309,10 @@ try {
               AND member_id = :member_id
             LIMIT 1
         ");
+
+        // =====================================
+        // 5. INSERT Settlement
+        // =====================================
 
         $insertStmt = $db->prepare("
             INSERT INTO monthly_settlements (
@@ -309,7 +327,7 @@ try {
                 utility_deposit,
                 deposits_total,
                 expenses_paid_credit,
-                
+                opening_balance,
                 final_balance,
                 calculated_at,
                 calculated_by
@@ -326,12 +344,16 @@ try {
                 :utility_deposit,
                 :deposits_total,
                 :expenses_paid_credit,
-                
+                0,
                 :final_balance,
                 CURRENT_TIMESTAMP,
                 :calculated_by
             )
         ");
+
+        // =====================================
+        // 6. UPDATE Settlement
+        // =====================================
 
         $updateStmt = $db->prepare("
             UPDATE monthly_settlements
@@ -340,12 +362,12 @@ try {
                 food_expense_total = :food_expense_total,
                 meal_rate = :meal_rate,
                 meal_cost = :meal_cost,
-                fixed_expense_share = :fixed_expense_share
+                fixed_expense_share = :fixed_expense_share,
                 meal_deposit = :meal_deposit,
                 utility_deposit = :utility_deposit,
                 deposits_total = :deposits_total,
                 expenses_paid_credit = :expenses_paid_credit,
-                
+                opening_balance = 0,
                 final_balance = :final_balance,
                 calculated_at = CURRENT_TIMESTAMP,
                 calculated_by = :calculated_by
@@ -353,7 +375,7 @@ try {
         ");
 
         // =====================================
-        // 5. Calculate each member
+        // 7. Calculate each member
         // =====================================
 
         $db->beginTransaction();
@@ -370,28 +392,55 @@ try {
                 ":end_date" => $endDate
             ];
 
+            // Member meal quantity
             $memberMealStmt->execute($params);
+
             $mealQuantity = (float) $memberMealStmt->fetchColumn();
 
+            // Member meal cost
             $mealCost = $mealQuantity * $mealRate;
 
+            // Fetch both deposit allocations
             $depositStmt->execute($params);
-            $depositsTotal = (float) $depositStmt->fetchColumn();
 
-            $mealDeposit = (float) ($depositData["meal_deposit"] ?? 0);
-            $utilityDeposit = (float) ($depositData["utility_deposit"] ?? 0);
+            $depositData = $depositStmt->fetch(PDO::FETCH_ASSOC);
 
+            $mealDeposit = (float) (
+                $depositData["meal_deposit"] ?? 0
+            );
+
+            $utilityDeposit = (float) (
+                $depositData["utility_deposit"] ?? 0
+            );
+
+            // Total allocated deposit
             $depositsTotal = $mealDeposit + $utilityDeposit;
 
+            // Member-paid verified expenses
             $creditStmt->execute($params);
+
             $expensesPaidCredit = (float) $creditStmt->fetchColumn();
 
-            
-            // Original Excel sign convention:
+            // =====================================
+            // Final Balance
+            // =====================================
+
+            // Opening Balance is excluded.
+            //
             // Positive = Member must pay
             // Negative = Member receives money
 
-           
+            $finalBalance = round(
+                $mealCost
+                + $fixedExpenseShare
+                - $depositsTotal
+                - $expensesPaidCredit,
+                2
+            );
+
+            // =====================================
+            // Prepare database values
+            // =====================================
 
             $values = [
                 ":meal_quantity" => $mealQuantity,
@@ -403,11 +452,11 @@ try {
                 ":utility_deposit" => round($utilityDeposit, 2),
                 ":deposits_total" => round($depositsTotal, 2),
                 ":expenses_paid_credit" => round($expensesPaidCredit, 2),
-                
                 ":final_balance" => $finalBalance,
                 ":calculated_by" => $userId
             ];
 
+            // Check existing settlement
             $findSettlementStmt->execute([
                 ":month_id" => $monthId,
                 ":member_id" => $memberId
@@ -433,17 +482,18 @@ try {
                 );
             }
 
+            // Response data
             $results[] = [
                 "member_id" => $memberId,
                 "member_name" => $member["full_name"],
                 "meal_quantity" => $mealQuantity,
                 "meal_cost" => round($mealCost, 2),
+                "meal_rate" => round($mealRate, 4),
                 "fixed_expense_share" => round($fixedExpenseShare, 2),
                 "meal_deposit" => round($mealDeposit, 2),
                 "utility_deposit" => round($utilityDeposit, 2),
                 "deposits_total" => round($depositsTotal, 2),
                 "expenses_paid_credit" => round($expensesPaidCredit, 2),
-                
                 "final_balance" => $finalBalance
             ];
         }

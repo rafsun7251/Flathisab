@@ -19,7 +19,19 @@ export default function SettlementManagement({ user }) {
       ...options
     });
 
-    const data = await response.json();
+    const rawResponse = await response.text();
+
+let data;
+
+try {
+  data = JSON.parse(rawResponse);
+} catch (error) {
+  console.error("Backend Raw Response:", rawResponse);
+
+  throw new Error(
+    "Backend returned invalid JSON. Check browser console for PHP error."
+  );
+}
 
     if (!response.ok || data.status !== "success") {
       throw new Error(data.message || "Request failed.");
